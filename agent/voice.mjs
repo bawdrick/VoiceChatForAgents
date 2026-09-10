@@ -139,11 +139,13 @@ async function cmdStart() {
   const errFile = join(STORE_DIR, `${session.session_id.slice(0, 8)}.err`);
 
   await printQr(session.pair_url);
+  const image = await writeQrImage(session.pair_url, session.session_id);
   const out = [
     "",
-    `Pair URL (valid for ${session.expires_in} s, single use):`,
+    `Pair URL (single use, valid for ${Math.round(session.expires_in / 60)} minutes):`,
     `  ${session.pair_url}`,
     "",
+    ...(image ? ["QR code as an image (block characters do not survive every viewer):", `  ${image}`, ""] : []),
     "Monitor this command in the Claude Code session:",
     `  node "${script}" listen --session ${session.session_id} 2>>"${errFile}"`,
     "",
@@ -155,6 +157,23 @@ async function cmdStart() {
     "",
   ].join("\n");
   process.stdout.write(out);
+}
+
+/**
+ * The same code as a PNG. Half block characters need an exact line height to
+ * scan, which a chat window or a copied terminal will not give you.
+ */
+async function writeQrImage(text, sessionId) {
+  const file = join(ensureStore(), `${sessionId.slice(0, 8)}.png`);
+  try {
+    const { default: qrcode } = await import("qrcode");
+    await qrcode.toFile(file, text, { width: 640, margin: 2, errorCorrectionLevel: "M" });
+    return file;
+  } catch (error) {
+    process.stderr.write(`could not write the QR image: ${error.message}
+`);
+    return null;
+  }
 }
 
 async function printQr(text) {

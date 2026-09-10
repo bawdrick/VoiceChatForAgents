@@ -1,0 +1,118 @@
+/* Diagnostics page. Verdicts have to be readable at arm's length on a phone. */
+
+body.selftest {
+  display: block;
+}
+
+body.selftest main {
+  padding: 14px 14px 40px;
+  max-width: 46rem;
+  margin: 0 auto;
+}
+
+.lead {
+  font-size: 15px;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+body.selftest h2 {
+  font-size: 17px;
+  margin: 26px 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+body.selftest table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+body.selftest td {
+  padding: 7px 6px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+body.selftest td:first-child {
+  width: 42%;
+  color: var(--muted);
+}
+
+.tag {
+  display: inline-block;
+  min-width: 4.5rem;
+  text-align: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #06122b;
+}
+
+.tag.pass {
+  background: var(--good);
+}
+.tag.fail {
+  background: var(--bad);
+}
+.tag.warn {
+  background: var(--warn);
+}
+.tag.wait {
+  background: var(--muted);
+}
+
+.big {
+  width: 100%;
+  padding: 16px;
+  font-size: 17px;
+  font-weight: 600;
+  border-radius: 12px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+}
+
+.big[aria-pressed="true"] {
+  background: var(--bad);
+}
+
+.heard {
+  margin: 12px 0;
+  padding: 12px;
+  min-height: 3.4rem;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  font-size: 17px;
+  white-space: pre-wrap;
+}
+
+.heard.interim {
+  color: var(--muted);
+  font-style: italic;
+}
+
+body.selftest pre {
+  max-height: 40vh;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 10px;
+  background: #04060a;
+  color: #7ef29a;
+  font: 11px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.state-pass .dot {
+  background: var(--good);
+}
+.state-fail .dot {
+  background: var(--bad);
+}

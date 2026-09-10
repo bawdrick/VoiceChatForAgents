@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="hu">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Hangcsatorna — önteszt</title>
+    <link rel="stylesheet" href="/app.css" />
+    <link rel="stylesheet" href="/selftest.css" />
+  </head>
+  <body class="selftest">
+    <header class="bar">
+      <div class="status">
+        <span class="dot" id="verdictDot"></span>
+        <span id="verdict">Önteszt</span>
+      </div>
+    </header>
+
+    <main>
+      <p class="lead">
+        Ez a lap nem a beszélgetés. Azt méri meg, hogy <em>ezen az eszközön, ebben a
+        böngészőben</em> működik-e az, amire a hangcsatorna épül. Futtasd le a telefonon
+        és a gépen is.
+      </p>
+
+      <h2>1. Ami magától eldől</h2>
+      <table id="capabilities"></table>
+
+      <h2>2. Felolvasás</h2>
+      <p class="hint">
+        Meg kell szólalnia magyarul. Ha némán marad, vagy angol akcentussal olvas,
+        az bukás akkor is, ha a lap alább sikert ír.
+      </p>
+      <button type="button" class="big" id="ttsBtn">Felolvasás próba</button>
+      <table id="ttsResults"></table>
+
+      <h2>3. Beszédfelismerés</h2>
+      <p class="hint">
+        Nyomd meg, engedélyezd a mikrofont, és mondj egy egész mondatot magyarul.
+        A felismerő szünetnél magától leáll; a lap újraindítja, ahogy a beszélgetés is.
+      </p>
+      <button type="button" class="big" id="sttBtn">Felismerés indítása</button>
+      <div class="heard" id="heard">—</div>
+      <table id="sttResults"></table>
+
+      <h2>4. Nyers napló</h2>
+      <p class="hint">Ezt küldd el, ha valami elhasal. Minden esemény, ahogy jött.</p>
+      <pre id="log"></pre>
+      <button type="button" class="link" id="copyBtn">Napló másolása</button>
+    </main>
+
+    <script src="/selftest.js"></script>
+  </body>
+</html>

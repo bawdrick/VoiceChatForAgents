@@ -23,7 +23,9 @@ import {
 import { normalizeSpeech, normalizeUtterance } from "./text";
 import { newCookieToken, sha256, timingSafeEqual } from "./tokens";
 
-export const UNPAIRED_TTL_MS = 120_000;
+// Long enough to get the phone out, open the camera and let the page load,
+// which two minutes was not. The token is still single use and 128 bits wide.
+export const UNPAIRED_TTL_MS = 10 * 60 * 1000;
 export const IDLE_TTL_MS = 12 * 60 * 60 * 1000;
 
 const TAG_BROWSER = "browser";

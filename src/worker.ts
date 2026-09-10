@@ -4,7 +4,7 @@
 // Every rejection returns the same 404 through the same code path, so a probe
 // cannot tell an unknown token from an expired one from a closed session.
 
-import { SessionDO } from "./session-do";
+import { SessionDO, UNPAIRED_TTL_MS } from "./session-do";
 import { looksLikeToken, newAgentToken, newPairToken, sessionIdFromPairToken, sha256 } from "./tokens";
 
 export { SessionDO };
@@ -125,7 +125,7 @@ async function createSession(request: Request, env: Env, url: URL): Promise<Resp
     agent_ws_url: `${wsOrigin}/ws/agent?s=${sessionId}&t=${agentToken}`,
     say_url: `${origin}/api/say?s=${sessionId}`,
     drop_url: `${origin}/api/drop?s=${sessionId}`,
-    expires_in: 120,
+    expires_in: Math.round(UNPAIRED_TTL_MS / 1000),
   });
 }
 

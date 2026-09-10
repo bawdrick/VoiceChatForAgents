@@ -29,6 +29,26 @@
 
     <p class="banner" id="banner" hidden></p>
 
+    <section class="handoff" id="handoff" hidden>
+      <h2>Ez a böngésző nem tud beszédfelismerést</h2>
+      <p>
+        A párosító linket <strong>nem használtam el</strong>, tehát még érvényes.
+        Nyisd meg Chrome-ban — ez itt a teljes link:
+      </p>
+      <code id="handoffUrl"></code>
+      <div class="handoff-actions">
+        <button type="button" class="big" id="shareBtn" hidden>Megnyitás másik böngészőben</button>
+        <button type="button" class="big" id="copyLinkBtn">Link másolása</button>
+        <button type="button" class="link" id="continueAnyway">
+          Mégis itt folytatom, csak gépelve
+        </button>
+      </div>
+      <p class="hint">
+        Ha itt folytatod, a link elhasználódik, és utána másik böngészőben már nem
+        működik — ahhoz új QR kód kell a gépen.
+      </p>
+    </section>
+
     <main id="log" class="log" aria-label="Beszélgetés">
       <p class="empty" id="empty">Kapcsold be a mikrofont, és beszélj. Amit mondasz, itt jelenik meg, mielőtt elmegy.</p>
     </main>

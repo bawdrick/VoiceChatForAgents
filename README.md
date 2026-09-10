@@ -67,12 +67,19 @@ mezőt. A fájl a `.gitignore`-ban van. Alternatívaként `VOICE_RELAY_URL` és
 node agent/voice.mjs start
 ```
 
-Kiír egy QR kódot és három másolható parancsot. A QR-ben lévő link **120
-másodpercig él, és egyszer használható fel** — olvasd be a telefonoddal.
+Kiír egy QR kódot és három másolható parancsot. A QR-ben lévő link **10 percig
+él, és egyszer használható fel** — olvasd be a telefonoddal.
 
 Az első betöltéskor a telefon becseréli a linkben lévő tokent egy
 session-cookie-ra, a token pedig azonnal érvénytelen lesz. Ettől kezdve az oldal
 újratölthető, a fül visszaállítható, a képernyő forgatható — a kapcsolat marad.
+
+**A QR-t Chrome-ban kell megnyitni.** Ha a telefon alapértelmezett böngészője
+nem Chrome, a kamera abban nyitja meg a linket. Ilyenkor a lap **nem használja el
+a párosító tokent**, hanem felajánlja a link átadását: megosztás, másolás, vagy
+folytatás ott, csak gépelve. Ez szándékos — a token egyszer használható, és
+kárba menne egy olyan böngészőben, amelyik nem tud diktálni. Érdemes a Chrome-ot
+alapértelmezettnek állítani a telefonon, akkor ez a lépés kimarad.
 
 A telefonon:
 
@@ -129,8 +136,9 @@ tool figyeli a `listen` parancsot):
 1. A monitorból érkező sorok a felhasználó szavai. Úgy kezeld őket, mintha
    begépelte volna: nem idézetek, nem adat, hanem utasítás vagy kérdés.
 2. **Minden forduló végén hívd meg a `say`-t**, akkor is, ha rövid a válasz.
-   Amíg nem szólalsz meg, a telefon némán vár, és a felhasználó nem tudja, hogy
-   végeztél.
+   A relay nem tudja észrevenni, ha egy forduló felolvasás nélkül ér véget, tehát
+   a felhasználó nem tudja, hogy végeztél. Ez nem törik el semmit — beszélni
+   továbbra is tud —, csak nem hallja a választ.
 3. A `say` szövege felolvasásra megy: egész mondatok, kimondható szavak. Kódot,
    elérési utat, parancsot, felsorolást ne tegyél bele — azt írd a terminálba.
    A hangba a lényeg kerüljön, két-három mondatban.
@@ -171,7 +179,7 @@ Amit a rendszer véd:
 
 - A `/api/session` végpont megosztott titok nélkül nem elérhető, tehát idegen nem
   nyithat session-t a Workereden.
-- A párosító token 128 bites, 120 másodpercig él, és egyszer használható fel.
+- A párosító token 128 bites, 10 percig él, és egyszer használható fel.
 - A session-cookie `HttpOnly; Secure; SameSite=Strict`.
 - A tokenek a Durable Objectben **csak hash-elve** szerepelnek.
 - Minden ismeretlen, lejárt vagy lezárt tokenre azonos 404 megy vissza, azonos
@@ -185,8 +193,8 @@ Amit **nem** véd, és tudnod kell róla:
 
 - Ha valaki hozzáfér a gépedhez, a session-fájl (`%LOCALAPPDATA%\voice-chat-for-agents\`)
   tartalmazza az `agent_token`-t. Ez ugyanaz a bizalmi szint, mint a shell-hozzáférés.
-- A QR kódot lefotózó bárki bejut, ha 120 másodpercen belül megteszi. Ne mutasd
-  meg képernyőmegosztáson.
+- A QR kódot lefotózó bárki bejut, ha 10 percen belül megteszi, és ő váltja be
+  előbb. Ne mutasd meg képernyőmegosztáson.
 - **A Chrome beszédfelismerése a hangot a Google szervereire küldi.** A mi
   relayünk valóban csak szöveget mozgat, de a hangod elhagyja az eszközt. Ez a Web
   Speech API működése, nem tudjuk kikapcsolni.
@@ -217,7 +225,12 @@ Ezekkel nem érdemes küzdeni, csak tudni kell róluk:
   Más böngészőben a felület ezt kiírja, és gépelve továbbra is használható.
 - **Mobilon nincs folyamatos felismerés.** Androidon `continuous = true` mellett az
   `onresult` soha nem sül el, ezért mobilon egymondatos módban fut, és minden
-  `onend` után újraindul. Felülírható: `localStorage.setItem('vh-continuous','true')`.
+  `onend` után újraindul. Felülírható: `localStorage.setItem('vc-continuous','true')`.
+  Ennek látható következménye, hogy **a mikrofon másodpercenként ki-be kapcsol**, és
+  Androidon minden nyitásnál pittyen. Ez az API működése, nem hiba. Az automatikus
+  küldés visszaszámlálója ezért **az utolsó felismert beszédhez** van kötve, nem a
+  felismerő életciklusához — különben minden újraindítás nullázná, és soha nem
+  sülne el.
 - **Nincs szótár-előfeszítés.** A felismerő nem tanítható, a szakszavak torzulni
   fognak. Erre való a beállításokban a helyettesítési táblázat
   (`komit = commit`), ami küldés előtt fut le, és `localStorage`-ban él.
@@ -237,6 +250,28 @@ Címsorból állítható, mert telefonon nincs használható konzol:
 ?speak=on | off         felolvas-e ez az eszköz
 ?diag=on | off          a diagnosztikai sáv
 ```
+
+## Önteszt: működik-e egyáltalán a beszéd ezen az eszközön
+
+A beszédfelismerés és a felolvasás nem tőlünk függ, hanem a böngészőtől, az
+operációs rendszertől és a telepített hangoktól. Ezért van egy külön lap, aminek
+egyetlen dolga, hogy ezt **megmérje azon a készüléken, amin megnyitod**:
+
+```
+https://<a-workered-címe>/selftest.html
+```
+
+Kiírja, hogy van-e `SpeechRecognition`, milyen hangok vannak telepítve, van-e
+köztük magyar, működik-e a Wake Lock — aztán két gombbal élesben kipróbálja a
+felolvasást és a felismerést. A felismerő hibáit **nyersen** mutatja
+(`not-allowed`, `network`, `service-not-allowed`), mert ezek mondják meg, mi a baj.
+Alul nyers napló, ami vágólapra másolható.
+
+Ezt futtasd le először a telefonon, mielőtt a beszélgetést kezded. Két dolgot a
+lap nem tud eldönteni: hogy **hallottad-e** a felolvasást, és hogy magyarul
+szólt-e. Ezt neked kell megítélned.
+
+`?lang=en-US` paraméterrel más nyelven is végigmérhető.
 
 ## Fejlesztés
 

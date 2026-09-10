@@ -24,10 +24,17 @@
   // Chrome finalises a phrase well after the audio stops, so the microphone stays
   // deaf a little longer than the synthesiser is busy.
   const ECHO_TAIL_MS = 3000;
-  // A turn that ends without a spoken answer is invisible to the relay, and the
-  // phone would wait for it forever. After this the page gives up waiting.
-  const WAITING_TIMEOUT_MS = 180_000;
   const SPEECH_CHUNK_CHARS = 180;
+  // Recognition restarts after every phrase, so a failure that repeats would
+  // restart in a tight loop. Attempts that never reach the microphone back off.
+  const RESTART_MIN_MS = 200;
+  const RESTART_MAX_MS = 5000;
+  const RESTART_GIVE_UP = 8;
+  const WATCHDOG_MS = 4000;
+  // The Android speech service can take seconds to open the microphone. Until
+  // then the recogniser looks idle, and cutting it off there would throw away
+  // the beginning of a sentence.
+  const START_GRACE_MS = 6000;
 
   const el = (id) => document.getElementById(id);
   const dom = {
@@ -52,6 +59,11 @@
     subsInput: el("subsInput"),
     diagToggle: el("diagToggle"),
     testTtsBtn: el("testTtsBtn"),
+    handoff: el("handoff"),
+    handoffUrl: el("handoffUrl"),
+    shareBtn: el("shareBtn"),
+    copyLinkBtn: el("copyLinkBtn"),
+    continueAnyway: el("continueAnyway"),
     countdown: el("countdown"),
     countdownText: el("countdownText"),
     cancelSend: el("cancelSend"),
@@ -122,6 +134,7 @@
     agentOnline: false,
     closed: false,
     closedReason: "",
+    awaitingHandoff: false, // a browser that cannot listen, holding an unspent link
     attempt: 0,
     reconnectTimer: null,
     pingTimer: null,
@@ -133,8 +146,8 @@
     autoSendTimer: null,
     autoSendTick: null,
     autoSendAt: 0,
+    contentAt: 0, // when recognised speech last arrived; anchors the countdown
     waiting: false, // an utterance went out and nothing has been read back yet
-    waitingTimer: null,
     speaking: false,
     suppressRecognition: false,
     suppressTimer: null,
@@ -147,29 +160,34 @@
     connecting: ["connecting", "Kapcsolódás…"],
     idle: ["idle", "Kész"],
     listening: ["listening", "Hallgatlak"],
+    starting: ["starting", "Mikrofon indul…"],
     recognizing: ["recognizing", "Felismerés…"],
     armed: ["armed", "Küldés…"],
     waiting: ["waiting", "Várom a választ"],
     speaking: ["speaking", "Felolvasás"],
     offline: ["offline", "Nincs kapcsolat"],
     closed: ["closed", "Lezárult"],
+    handoff: ["starting", "Párosításra vár"],
     error: ["error", "Hiba"],
   };
 
   function render() {
     let key = "idle";
-    if (app.closed) key = "closed";
+    if (app.awaitingHandoff) key = "handoff";
+    else if (app.closed) key = "closed";
     else if (!app.connected) key = app.attempt === 0 ? "connecting" : "offline";
     else if (app.speaking) key = "speaking";
     else if (app.autoSendTimer) key = "armed";
     else if (app.interim) key = "recognizing";
     else if (app.waiting) key = "waiting";
     else if (app.listening) key = "listening";
+    else if (app.micWanted) key = "starting";
 
     const [cls, text] = STATUS[key];
     dom.status.className = `status state-${cls}`;
     let suffix = "";
-    if (key === "closed" && app.closedReason) suffix = ` (${app.closedReason})`;
+    if (key === "handoff") suffix = "";
+    else if (key === "closed" && app.closedReason) suffix = ` (${app.closedReason})`;
     else if (app.connected && !app.agentOnline && !app.closed) suffix = " · gép nincs itt";
     dom.statusText.textContent = text + suffix;
 
@@ -333,8 +351,8 @@
       app.speaking = false;
       releaseSuppression();
       render();
-      // Anything said while the answer was being read out is still in the box.
-      if (dom.input.value.trim()) armAutoSend();
+      // Anything said while the answer was read out is still in the box, but it
+      // waits for new speech rather than going off the moment the phone stops.
       return;
     }
     const utterance = new SpeechSynthesisUtterance(piece);
@@ -436,15 +454,39 @@
 
   // -------------------------------------------------------------- auto send
 
-  function armAutoSend() {
-    cancelAutoSend();
-    if (settings.autoSend <= 0) return;
-    // Never fire into a turn that is already running: that is exactly the
-    // interruption the whole one-utterance-at-a-time design avoids.
-    if (app.waiting || app.speaking || app.closed) return;
-    if (!dom.input.value.trim()) return;
+  /** Recognised speech is the only thing that moves the deadline. */
+  function noteSpeech() {
+    app.contentAt = Date.now();
+    armAutoSend();
+  }
 
-    app.autoSendAt = Date.now() + settings.autoSend;
+  function clearAutoSendTimers() {
+    clearTimeout(app.autoSendTimer);
+    clearInterval(app.autoSendTick);
+    app.autoSendTimer = null;
+    app.autoSendTick = null;
+    dom.countdown.hidden = true;
+  }
+
+  /**
+   * Anchored to the last speech, never to "now". On Android the recogniser ends
+   * and restarts every second or two, and this is called on every one of those
+   * cycles; re-arming from now pushed the deadline out for ever, so nothing was
+   * ever sent and only the button worked.
+   */
+  function armAutoSend() {
+    clearAutoSendTimers();
+    if (settings.autoSend <= 0 || app.contentAt === 0) return render();
+    // Only the phone talking blocks this, because the microphone is deaf then
+    // anyway. Speaking again while a turn is still running is the user's call,
+    // not ours: the relay delivers it and the agent side queues it.
+    if (app.speaking || app.closed) return render();
+    if (!dom.input.value.trim()) return render();
+
+    app.autoSendAt = app.contentAt + settings.autoSend;
+    const remaining = app.autoSendAt - Date.now();
+    if (remaining <= 0) return send();
+
     dom.countdown.hidden = false;
     const tick = () => {
       const left = Math.max(0, app.autoSendAt - Date.now());
@@ -453,18 +495,16 @@
     tick();
     app.autoSendTick = setInterval(tick, 100);
     app.autoSendTimer = setTimeout(() => {
-      cancelAutoSend();
+      clearAutoSendTimers();
       send();
-    }, settings.autoSend);
+    }, remaining);
     render();
   }
 
+  /** Deliberate stop: drops the anchor too, so the next cycle cannot revive it. */
   function cancelAutoSend() {
-    clearTimeout(app.autoSendTimer);
-    clearInterval(app.autoSendTick);
-    app.autoSendTimer = null;
-    app.autoSendTick = null;
-    dom.countdown.hidden = true;
+    clearAutoSendTimers();
+    app.contentAt = 0;
     render();
   }
 
@@ -490,18 +530,18 @@
   }
 
   function startWaiting() {
-    clearTimeout(app.waitingTimer);
     app.waiting = true;
-    app.waitingTimer = setTimeout(() => stopWaiting(), WAITING_TIMEOUT_MS);
     render();
   }
 
+  /**
+   * Waiting is a label, not a lock. Nothing here blocks speaking again: a turn
+   * that ends without an answer is invisible to the relay, so the phone must not
+   * depend on one arriving.
+   */
   function stopWaiting() {
-    clearTimeout(app.waitingTimer);
-    app.waitingTimer = null;
     app.waiting = false;
     render();
-    if (dom.input.value.trim()) armAutoSend();
   }
 
   // ------------------------------------------------------------- connection
@@ -599,8 +639,15 @@
   function markClosed(reason) {
     app.closed = true;
     app.closedReason = reason;
+    showBanner(
+      reason.includes("nem párosított")
+        ? "Ha másik böngészőből másoltad ide a linket, az nem működik: a párosítás böngészőhöz kötött. " +
+            "Olvasd be a QR kódot ezzel a böngészővel."
+        : "Indíts új csatornát a gépen, és olvasd be a QR kódot. Ez a lap innentől nem kapcsolódik.",
+    );
     app.connected = false;
     stopPing();
+    stopWatchdog();
     stopRecognition();
     app.micWanted = false;
     releaseWakeLock();
@@ -658,6 +705,10 @@
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   let recognition = null;
+  let restartFailures = 0;
+  let restartTimer = null;
+  let watchdogTimer = null;
+  let startedAt = 0;
 
   function buildRecognition() {
     if (!SpeechRecognition) return null;
@@ -676,9 +727,14 @@
       app.listening = true;
       render();
     };
+    instance.onaudiostart = () => {
+      // The microphone really opened, so whatever failed before is over.
+      restartFailures = 0;
+      diag("mikrofon él");
+    };
     instance.onspeechstart = () => {
-      // Still talking, so the pause has not happened yet.
-      cancelAutoSend();
+      // Deliberately does not touch the countdown. This fires on any sound, and
+      // cancelling here meant a noisy room could stop the auto send for good.
       diag("beszéd észlelve");
     };
     instance.onnomatch = () => diag("nomatch");
@@ -706,9 +762,10 @@
           interim += result[0].transcript;
         }
       }
+      restartFailures = 0;
       app.interim = interim.trim();
       paintComposed();
-      if (!app.interim) armAutoSend();
+      noteSpeech();
       render();
     };
 
@@ -726,37 +783,109 @@
       // leave the interim text stuck in the box forever.
       commitInterim();
       if (dom.input.value.trim()) armAutoSend();
-      if (app.micWanted && !app.closed) {
-        try {
-          instance.start();
-        } catch (error) {
-          diag(`újraindítás nem sikerült: ${error}`);
-        }
-      }
+      if (app.micWanted && !app.closed) scheduleRestart();
       render();
     };
 
     return instance;
   }
 
-  function startRecognition() {
-    if (!recognition) recognition = buildRecognition();
+  /**
+   * A phrase ending is not the end of dictation, so recognition starts again.
+   * Each attempt that never got as far as the microphone waits longer, and after
+   * enough of them the page stops and says so instead of spinning.
+   */
+  function scheduleRestart() {
+    clearTimeout(restartTimer);
+    restartTimer = null;
+    if (!app.micWanted || app.closed) return;
+    if (restartFailures >= RESTART_GIVE_UP) {
+      app.micWanted = false;
+      stopWatchdog();
+      releaseWakeLock();
+      showBanner(
+        "A felismerő többször egymás után nem indult el. Ellenőrizd a mikrofon engedélyét " +
+          "és a hálózatot, aztán kapcsold be újra.",
+      );
+      render();
+      return;
+    }
+    const delay = Math.min(RESTART_MAX_MS, RESTART_MIN_MS * 2 ** restartFailures);
+    restartFailures += 1;
+    restartTimer = setTimeout(() => {
+      restartTimer = null;
+      startRecognition();
+    }, delay);
+    render();
+  }
+
+  /** Detach a recogniser for good, so its events cannot reach us any more. */
+  function disposeRecognition() {
     if (!recognition) return;
+    const dying = recognition;
+    recognition = null;
+    dying.onstart = null;
+    dying.onaudiostart = null;
+    dying.onspeechstart = null;
+    dying.onnomatch = null;
+    dying.onresult = null;
+    dying.onerror = null;
+    dying.onend = null;
+    try {
+      dying.abort();
+    } catch {
+      /* already finished */
+    }
+  }
+
+  function startRecognition() {
+    clearTimeout(restartTimer);
+    restartTimer = null;
+    // A fresh object every time. Restarting the same recogniser after it ended
+    // is unreliable on Android: start() throws, or returns without ever opening
+    // the microphone, and dictation dies with the button still showing on.
+    disposeRecognition();
+    recognition = buildRecognition();
+    if (!recognition) return;
+    startedAt = Date.now();
     try {
       recognition.start();
-    } catch {
-      /* already running */
+    } catch (error) {
+      // This is the hole that killed dictation: a throw here used to be logged
+      // and forgotten, so nothing ever started the microphone again.
+      diag(`start dobott: ${error}`);
+      scheduleRestart();
     }
   }
 
   function stopRecognition() {
+    clearTimeout(restartTimer);
+    restartTimer = null;
     app.listening = false;
-    if (!recognition) return;
-    try {
-      recognition.stop();
-    } catch {
-      /* not running */
-    }
+    disposeRecognition();
+  }
+
+  /**
+   * Last line of defence. If the microphone should be on but nothing is
+   * listening and no restart is pending, the browser dropped a transition on the
+   * floor; start over rather than looking on while nothing happens.
+   */
+  function startWatchdog() {
+    stopWatchdog();
+    watchdogTimer = setInterval(() => {
+      if (!app.micWanted || app.closed) return;
+      if (app.listening || restartTimer) return;
+      // Give a recogniser that was only just started time to come up.
+      if (Date.now() - startedAt < START_GRACE_MS) return;
+      diag("watchdog: a felismerő állt, újraindítom");
+      restartFailures = 0;
+      startRecognition();
+    }, WATCHDOG_MS);
+  }
+
+  function stopWatchdog() {
+    clearInterval(watchdogTimer);
+    watchdogTimer = null;
   }
 
   async function requestWakeLock() {
@@ -780,9 +909,13 @@
   function setMic(wanted) {
     app.micWanted = wanted;
     if (wanted) {
+      restartFailures = 0;
+      app.contentAt = 0;
       startRecognition();
+      startWatchdog();
       requestWakeLock();
     } else {
+      stopWatchdog();
       stopRecognition();
       releaseWakeLock();
       cancelAutoSend();
@@ -933,33 +1066,80 @@
     const path = location.pathname;
     if (path.startsWith("/s/")) {
       const pairToken = decodeURIComponent(path.slice(3));
-      try {
-        const response = await fetch("/api/redeem", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ pair_token: pairToken }),
-        });
-        if (!response.ok) {
-          markClosed(response.status === 429 ? "túl sok próbálkozás" : "a párosító link már nem él");
-          return;
-        }
-        const body = await response.json();
-        app.sessionId = body.session_id;
-      } catch {
-        markClosed("nem sikerült párosítani");
+      if (!SpeechRecognition) {
+        offerHandoff(pairToken);
         return;
       }
-      // Get the token out of the address bar and out of the history.
-      history.replaceState(null, "", `/c/${app.sessionId}${location.search}`);
-    } else if (path.startsWith("/c/")) {
-      app.sessionId = decodeURIComponent(path.slice(3));
-    } else {
-      markClosed("nincs nyitott beszélgetés");
-      dom.empty.textContent = "Nincs nyitott beszélgetés. Olvasd be a QR kódot a gépen.";
-      dom.empty.hidden = false;
+      await redeemAndConnect(pairToken);
       return;
     }
+    if (path.startsWith("/c/")) {
+      app.sessionId = decodeURIComponent(path.slice(3));
+      connect();
+      return;
+    }
+    markClosed("nincs nyitott beszélgetés");
+    dom.empty.textContent = "Nincs nyitott beszélgetés. Olvasd be a QR kódot a gépen.";
+    dom.empty.hidden = false;
+  }
 
+  /** Hands the still-valid pair link to a browser that can do speech. */
+  function offerHandoff(pairToken) {
+    const url = `${location.origin}/s/${encodeURIComponent(pairToken)}`;
+    dom.handoffUrl.textContent = url;
+    dom.handoff.hidden = false;
+    // Nothing below it is usable yet, and an empty conversation under a handover
+    // notice only muddles the message.
+    dom.log.hidden = true;
+    dom.form.hidden = true;
+    dom.micBtn.disabled = true;
+    dom.banner.hidden = true;
+    app.awaitingHandoff = true;
+    render();
+
+    if (navigator.share) {
+      dom.shareBtn.hidden = false;
+      dom.shareBtn.addEventListener("click", () => {
+        navigator.share({ url, title: "Hangcsatorna" }).catch(() => {});
+      });
+    }
+    dom.copyLinkBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(url);
+        dom.copyLinkBtn.textContent = "Másolva";
+      } catch {
+        dom.copyLinkBtn.textContent = "A másolás nem megy, jelöld ki a linket";
+      }
+    });
+    dom.continueAnyway.addEventListener("click", async () => {
+      dom.handoff.hidden = true;
+      dom.log.hidden = false;
+      dom.form.hidden = false;
+      app.awaitingHandoff = false;
+      showBanner("Ez a böngésző nem ismer beszédet. Gépelve használható, a válaszokat felolvassa, ha van hozzá hang.");
+      await redeemAndConnect(pairToken);
+    });
+  }
+
+  async function redeemAndConnect(pairToken) {
+    try {
+      const response = await fetch("/api/redeem", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pair_token: pairToken }),
+      });
+      if (!response.ok) {
+        markClosed(response.status === 429 ? "túl sok próbálkozás" : "a párosító link már nem él");
+        return;
+      }
+      const body = await response.json();
+      app.sessionId = body.session_id;
+    } catch {
+      markClosed("nem sikerült párosítani");
+      return;
+    }
+    // Get the token out of the address bar and out of the history.
+    history.replaceState(null, "", `/c/${app.sessionId}${location.search}`);
     connect();
   }
 

@@ -111,7 +111,8 @@ body {
   background: var(--accent);
 }
 .state-waiting .dot,
-.state-speaking .dot {
+.state-speaking .dot,
+.state-starting .dot {
   background: var(--warn);
 }
 .state-offline .dot,
@@ -176,6 +177,55 @@ body {
   color: #241a02;
   font-size: 14px;
   font-weight: 600;
+}
+
+/* Handoff to a browser that can actually do the job */
+
+.handoff {
+  padding: 16px;
+  margin: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.handoff h2 {
+  margin-top: 0;
+  font-size: 18px;
+}
+
+.handoff code {
+  display: block;
+  padding: 10px;
+  margin: 12px 0;
+  border-radius: 10px;
+  background: var(--panel-2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.handoff-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.handoff .big {
+  width: 100%;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 12px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+}
+
+.handoff .hint {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 /* Conversation */
