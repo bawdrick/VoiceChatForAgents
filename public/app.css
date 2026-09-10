@@ -1,0 +1,380 @@
+/* One screen, held in one hand. Everything that matters has to be readable at a
+   glance and hittable with a thumb. */
+
+:root {
+  --bg: #12141a;
+  --panel: #1b1e26;
+  --panel-2: #232733;
+  --text: #eef1f7;
+  --muted: #98a0b3;
+  --line: #2e3444;
+  --accent: #5b9cff;
+  --accent-ink: #06122b;
+  --mine: #2a3550;
+  --theirs: #232733;
+  --good: #4ec38a;
+  --warn: #f0b543;
+  --bad: #ef6a6a;
+  --radius: 14px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f6fa;
+    --panel: #ffffff;
+    --panel-2: #eef1f7;
+    --text: #151821;
+    --muted: #5b6479;
+    --line: #dde2ec;
+    --mine: #dbe6ff;
+    --theirs: #eef1f7;
+    --accent-ink: #ffffff;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* An author rule that sets display beats the browser default for [hidden]. */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* Status bar */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 600;
+  min-width: 0;
+  flex: 1;
+}
+
+/* The reason a session ended matters more than keeping the bar one line tall. */
+#statusText {
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+
+.state-listening .dot,
+.state-recognizing .dot {
+  background: var(--good);
+}
+.state-armed .dot {
+  background: var(--accent);
+}
+.state-waiting .dot,
+.state-speaking .dot {
+  background: var(--warn);
+}
+.state-offline .dot,
+.state-closed .dot,
+.state-error .dot {
+  background: var(--bad);
+}
+
+/* Recording is the one state that has to be obvious from across the room. */
+.state-listening .dot,
+.state-recognizing .dot {
+  box-shadow: 0 0 0 0 rgba(78, 195, 138, 0.7);
+  animation: pulse 1.6s infinite;
+}
+
+@keyframes pulse {
+  70% {
+    box-shadow: 0 0 0 10px rgba(78, 195, 138, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(78, 195, 138, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none !important;
+  }
+}
+
+.bar-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.icon-btn {
+  width: 46px;
+  height: 46px;
+  font-size: 21px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.icon-btn[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.icon-btn.mic[aria-pressed="false"] {
+  opacity: 0.65;
+}
+
+.banner {
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--warn);
+  color: #241a02;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Conversation */
+
+.log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 12px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+  margin: auto;
+  max-width: 30ch;
+}
+
+.msg {
+  max-width: 88%;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.msg.mine {
+  align-self: flex-end;
+  background: var(--mine);
+  border-bottom-right-radius: 4px;
+}
+
+.msg.theirs {
+  align-self: flex-start;
+  background: var(--theirs);
+  border-bottom-left-radius: 4px;
+}
+
+.msg-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.msg.failed {
+  border: 1px solid var(--bad);
+}
+
+.replay {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+/* Compose */
+
+.compose {
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  padding: 10px 12px;
+}
+
+.compose-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+#input {
+  flex: 1;
+  resize: none;
+  min-height: 52px;
+  max-height: 40vh;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+}
+
+#input.interim {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.send {
+  width: 56px;
+  height: 52px;
+  border-radius: 12px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 20px;
+  cursor: pointer;
+  flex: none;
+}
+
+.send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.countdown {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.link {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  padding: 4px;
+  text-decoration: underline;
+}
+
+/* Settings */
+
+.settings {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  overflow-y: auto;
+  padding: 18px 16px calc(24px + env(safe-area-inset-bottom));
+  background: var(--bg);
+}
+
+.settings h2 {
+  margin-top: 0;
+}
+
+.field {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.field > span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.field select,
+.field input[type="range"],
+.field textarea {
+  width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+}
+
+.field input[type="range"] {
+  padding: 0;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 16px;
+}
+
+.diag {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  margin: 0;
+  max-height: 34vh;
+  overflow: auto;
+  padding: 6px 8px;
+  background: #04060a;
+  color: #7ef29a;
+  font: 11px/1.4 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  white-space: pre-wrap;
+  opacity: 0.93;
+}

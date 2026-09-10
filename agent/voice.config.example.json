@@ -1,0 +1,4 @@
+{
+  "url": "https://voice-chat-for-agents.YOUR-SUBDOMAIN.workers.dev",
+  "secret": "the value you passed to: wrangler secret put VOICE_RELAY_SECRET"
+}

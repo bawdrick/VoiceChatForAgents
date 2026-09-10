@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "voice-chat-for-agents",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-22",
+
+  // The Worker sees every request first and falls through to the static files
+  // itself, because /s/<pair_token> has to serve the app from a dynamic path.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+
+  "durable_objects": {
+    "bindings": [{ "name": "SESSION", "class_name": "SessionDO" }]
+  },
+
+  // SQLite-backed, which is what the free plan offers.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SessionDO"] }],
+
+  // Brute forcing the pair token should not be free, and it must be stopped
+  // before it can reach a Durable Object and burn the daily request budget.
+  "ratelimits": [
+    {
+      "name": "REDEEM_LIMIT",
+      "namespace_id": "1001",
+      "simple": { "limit": 20, "period": 60 }
+    }
+  ],
+
+  // Deliberately off. Request logs would contain the agent token, which travels
+  // in the WebSocket URL because neither browsers nor Node let a WebSocket client
+  // set a header.
+  "observability": { "enabled": false }
+}

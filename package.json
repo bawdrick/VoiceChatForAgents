@@ -1,0 +1,26 @@
+{
+  "name": "voice-chat-for-agents",
+  "version": "0.1.0",
+  "description": "Voice relay that lets a phone talk to a Claude Code session through Cloudflare Workers",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "voice": "node agent/voice.mjs"
+  },
+  "dependencies": {
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.130.0"
+  }
+}

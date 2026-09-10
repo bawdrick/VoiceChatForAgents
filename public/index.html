@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="hu">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Hangcsatorna</title>
+    <link rel="stylesheet" href="/app.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>&#127908;</text></svg>" />
+  </head>
+  <body>
+    <header class="bar">
+      <div class="status" id="status" role="status" aria-live="polite">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">Kapcsolódás…</span>
+      </div>
+      <div class="bar-actions">
+        <button id="speakerBtn" class="icon-btn" type="button" aria-pressed="true" title="Felolvasás ezen az eszközön">
+          <span aria-hidden="true">🔊</span>
+        </button>
+        <button id="micBtn" class="icon-btn mic" type="button" aria-pressed="false" title="Mikrofon">
+          <span aria-hidden="true">🎙️</span>
+        </button>
+        <button id="settingsBtn" class="icon-btn" type="button" aria-expanded="false" title="Beállítások">
+          <span aria-hidden="true">⚙️</span>
+        </button>
+      </div>
+    </header>
+
+    <p class="banner" id="banner" hidden></p>
+
+    <main id="log" class="log" aria-label="Beszélgetés">
+      <p class="empty" id="empty">Kapcsold be a mikrofont, és beszélj. Amit mondasz, itt jelenik meg, mielőtt elmegy.</p>
+    </main>
+
+    <form class="compose" id="composeForm">
+      <div class="compose-row">
+        <textarea
+          id="input"
+          rows="2"
+          placeholder="Itt gyűlik, amit mondasz. Javíthatod, mielőtt elküldöd."
+          autocomplete="off"
+          autocapitalize="sentences"
+          spellcheck="false"
+        ></textarea>
+        <button id="sendBtn" class="send" type="submit" title="Küldés">
+          <span aria-hidden="true">➤</span>
+          <span class="sr-only">Küldés</span>
+        </button>
+      </div>
+      <div class="countdown" id="countdown" hidden>
+        <span id="countdownText">Küldés…</span>
+        <button type="button" class="link" id="cancelSend">Mégse</button>
+      </div>
+    </form>
+
+    <section class="settings" id="settings" hidden>
+      <h2>Beállítások</h2>
+
+      <label class="field">
+        <span>Nyelv</span>
+        <select id="langSelect">
+          <option value="hu-HU">magyar (hu-HU)</option>
+          <option value="en-US">angol (en-US)</option>
+          <option value="de-DE">német (de-DE)</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Automatikus küldés néma szünet után</span>
+        <select id="autoSendSelect">
+          <option value="0">kikapcsolva</option>
+          <option value="1500">1,5 másodperc</option>
+          <option value="2500">2,5 másodperc</option>
+          <option value="3000">3 másodperc</option>
+          <option value="4000">4 másodperc</option>
+          <option value="6000">6 másodperc</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Felolvasás sebessége: <output id="rateOut">1,0</output></span>
+        <input type="range" id="rateInput" min="0.6" max="2" step="0.1" value="1" />
+      </label>
+
+      <label class="field">
+        <span>Hang</span>
+        <select id="voiceSelect"></select>
+      </label>
+
+      <label class="field">
+        <span>Helyettesítések (soronként: <code>amit hall = amit küldjön</code>)</span>
+        <textarea id="subsInput" rows="5" spellcheck="false" placeholder="komit = commit&#10;git hab = GitHub"></textarea>
+      </label>
+
+      <label class="check">
+        <input type="checkbox" id="diagToggle" />
+        <span>Diagnosztikai sáv</span>
+      </label>
+
+      <div class="settings-actions">
+        <button type="button" class="link" id="testTtsBtn">Felolvasás próba</button>
+        <button type="button" class="link" id="closeSettings">Bezár</button>
+      </div>
+    </section>
+
+    <pre class="diag" id="diag" hidden></pre>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

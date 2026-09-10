@@ -1,0 +1,2 @@
+# Copy to .dev.vars for `wrangler dev`. The deployed Worker uses a real secret.
+VOICE_RELAY_SECRET="dev-secret-not-for-production"
