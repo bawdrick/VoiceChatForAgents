@@ -19,13 +19,18 @@
   // SQLite-backed, which is what the free plan offers.
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SessionDO"] }],
 
-  // Brute forcing the pair token should not be free, and it must be stopped
-  // before it can reach a Durable Object and burn the daily request budget.
+  // Two different attacks, both of which end in a spent daily quota: guessing a
+  // pair token, and opening sessions in bulk with a leaked relay secret.
   "ratelimits": [
     {
       "name": "REDEEM_LIMIT",
       "namespace_id": "1001",
       "simple": { "limit": 20, "period": 60 }
+    },
+    {
+      "name": "SESSION_LIMIT",
+      "namespace_id": "1002",
+      "simple": { "limit": 10, "period": 60 }
     }
   ],
 

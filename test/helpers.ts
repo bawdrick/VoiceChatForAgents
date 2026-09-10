@@ -10,10 +10,19 @@ export type Session = {
   agent_ws_url: string;
 };
 
-export async function createSession(secret = SECRET): Promise<Response> {
+// The relay rate limits per client address, so every test gets its own address
+// and cannot spend another test's allowance. Pass one explicitly to test the
+// limit itself.
+let addressCounter = 0;
+export function freshAddress(): string {
+  addressCounter += 1;
+  return `198.51.100.${addressCounter % 250}`;
+}
+
+export async function createSession(secret = SECRET, ip = freshAddress()): Promise<Response> {
   return SELF.fetch(`${ORIGIN}/api/session`, {
     method: "POST",
-    headers: { authorization: `Bearer ${secret}` },
+    headers: { authorization: `Bearer ${secret}`, "cf-connecting-ip": ip },
   });
 }
 

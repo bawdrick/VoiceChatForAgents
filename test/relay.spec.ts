@@ -2,7 +2,7 @@ import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { SELF } from "cloudflare:test";
 import { CLOSE_DROPPED, CLOSE_EXPIRED } from "../src/protocol";
-import { ORIGIN, createSession, openSocket, pair, pairTokenOf, read, wsUrl, type Session } from "./helpers";
+import { ORIGIN, SECRET, createSession, openSocket, pair, pairTokenOf, read, wsUrl, type Session } from "./helpers";
 
 async function newSession(): Promise<Session> {
   const response = await createSession();
@@ -16,7 +16,8 @@ function browserUrl(session: Session): string {
 
 async function fireAlarm(sessionId: string): Promise<void> {
   const stub = env.SESSION.get(env.SESSION.idFromName(sessionId));
-  await runInDurableObject(stub, (instance) => instance.alarm());
+  // alarm() is optional on the base class, but SessionDO always defines it.
+  await runInDurableObject(stub, (instance) => instance.alarm!());
 }
 
 describe("pairing", () => {
@@ -24,6 +25,17 @@ describe("pairing", () => {
     expect((await createSession("wrong")).status).toBe(404);
     expect((await SELF.fetch(`${ORIGIN}/api/session`, { method: "POST" })).status).toBe(404);
     expect((await createSession()).status).toBe(200);
+  });
+
+  it("caps how fast sessions can be opened", async () => {
+    // A leaked relay secret buys nothing but bulk session creation, which would
+    // spend the daily Durable Object budget. This is the cap on that.
+    const statuses: number[] = [];
+    for (let i = 0; i < 20; i++) statuses.push((await createSession(SECRET, "203.0.113.7")).status);
+    // Cloudflare's limiter is approximate, so the exact cutoff is not the
+    // contract: that a burst gets cut off at all is.
+    expect(statuses).toContain(429);
+    expect(statuses.filter((code) => code === 200).length).toBeLessThan(statuses.length);
   });
 
   it("redeems the pair token once and sets a per-session cookie", async () => {

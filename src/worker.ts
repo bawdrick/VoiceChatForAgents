@@ -41,6 +41,24 @@ function withSecurityHeaders(response: Response): Response {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
+function tooManyRequests(): Response {
+  return new Response("Too many requests\n", {
+    status: 429,
+    headers: { ...SECURITY_HEADERS, "content-type": "text/plain; charset=utf-8" },
+  });
+}
+
+/**
+ * Caps an endpoint per client address. Checked before anything else, so a flood
+ * cannot reach a Durable Object and spend the daily request budget. Returns the
+ * response to send, or null to carry on.
+ */
+async function rateLimit(request: Request, limiter: RateLimit | undefined): Promise<Response | null> {
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const allowed = await limiter?.limit({ key: ip });
+  return allowed && allowed.success === false ? tooManyRequests() : null;
+}
+
 function bearer(request: Request): string | null {
   const header = request.headers.get("authorization");
   if (!header || !header.toLowerCase().startsWith("bearer ")) return null;
@@ -101,6 +119,11 @@ async function serveApp(request: Request, env: Env, url: URL): Promise<Response>
 }
 
 async function createSession(request: Request, env: Env, url: URL): Promise<Response> {
+  // The secret unlocks only this endpoint, and all a leak buys is the ability to
+  // open sessions in bulk until the daily quota is gone. This is the cap on that.
+  const limited = await rateLimit(request, env.SESSION_LIMIT);
+  if (limited) return limited;
+
   const secret = env.VOICE_RELAY_SECRET;
   const presented = bearer(request);
   if (!secret || !presented || presented !== secret) return notFound();

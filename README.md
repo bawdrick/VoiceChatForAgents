@@ -89,6 +89,36 @@ A telefonon:
    a küldés gomb mindig kéznél van.)
 4. A választ a telefon felolvassa. Ha lemaradtál róla, a 🔊 gomb újra felolvassa.
 
+## Egy másik gépről, ugyanezzel a relayjel
+
+A Worker és a Durable Object megosztott infrastruktúra: **nem kell újratelepíteni,
+és nem kell új titok.** A második gépen nincs szükség Cloudflare-hozzáférésre és
+`wrangler login`-ra sem — csak a címre és a titokra:
+
+```bash
+git clone https://github.com/bawdrick/VoiceChatForAgents.git
+```
+
+Utána `npm install`, majd `agent/voice.config.json` **ugyanazzal az `url`-lel és
+ugyanazzal a `secret`-tel**, mint az első gépen. Ennyi.
+
+Minden `start` külön beszélgetést nyit, saját `agent_token`-nel és saját QR
+kóddal, tehát a két gép nem lát bele egymás csatornájába, és egyszerre is
+használhatók. Ugyanaz a telefon mindkettőt tudja, akár két fülön: a session-cookie
+neve tartalmazza a beszélgetés azonosítóját, ezért nem írják felül egymást.
+
+Amit tudni kell a titokról: **egy Worker, egy titok.** Nem gépenkénti, mert a
+Cloudflare secret egyetlen érték. Ennek az az ára, hogy ha az egyik gép
+kompromittálódik, a titkot mindkettőn cserélni kell:
+
+```bash
+npx wrangler secret put VOICE_RELAY_SECRET
+```
+
+majd az új értéket beírni minden gép `agent/voice.config.json`-jába. A már futó
+session-öket ez nem szakítja meg — azok a saját `agent_token`-jükkel dolgoznak —,
+csak új session nyitásához kell a friss titok.
+
 ## Használat a Claude Code oldalán
 
 A `start` kiírja a pontos parancsokat a saját session-azonosítóddal. Három van:
@@ -201,6 +231,49 @@ Amit **nem** véd, és tudnod kell róla:
 
 Ezért: **ne kapcsold ki az engedélykérést a Claude Code oldalán.** Ha egy idegen
 utasítás mégis bejut, az engedélykérés az utolsó és egyetlen fékezés.
+
+### Ha kiszivárog a relay titka
+
+Érdemes pontosan tudni, mit jelent, mert szűkebb, mint amilyennek elsőre hangzik.
+A titok **egyetlen végpontot** nyit: a `POST /api/session`-t, ami új, üres
+beszélgetést hoz létre.
+
+Amit a titok birtokosa meg tud tenni:
+
+- **Új session-öket nyitni, sorozatban.** Minden nyitás létrehoz egy Durable
+  Objectet, és az ingyenes csomag napi 100 000 DO-kérésnél elfogy — túllépéskor a
+  Cloudflare hibát dob, nem lassít, tehát a te `start`-od is hibára fut, amíg
+  00:00 UTC-kor nem áll vissza a keret. Ezért van a `/api/session`-ön
+  sebességkorlát: **10 hívás percenként, IP-nként.** A napi használat ezt nem
+  érzi, egy támadónak viszont nagyságrendekkel megnehezíti a keret felélését.
+- **Hihető párosító linket generálni a te hosztnevedről.** Ez a kellemetlenebb:
+  ha rábeszélnek egy ilyen QR beolvasására, a telefonod **az ő session-jéhez**
+  párosít, onnantól amit diktálsz, az az ő oldalára folyik, és ő olvastathat fel
+  bármit a telefonodon. A Claude Code-odat ez nem éri el, de a beszédedet igen.
+  A védelem szokás kérdése: **csak olyan QR-t olvass be, amit a saját terminálod
+  épp most írt ki.**
+
+Amit a titokkal **nem** lehet megtenni, és ez architektúrából következik, nem jó
+szándékból:
+
+| | |
+|---|---|
+| Meglévő beszélgetéshez hozzáférni | Nem. A session címe `sha256(pair_token)`, a hitelesítés a session-enkénti `agent_token` és cookie hash-e; a titok ebben nem játszik szerepet |
+| Utasítást küldeni a gépeden futó Claude Code-nak | Nem. A `listen` a *te* session-öd Durable Objectjéhez kapcsolódik, a támadóé egy másik példány |
+| A beszélgetésedet elolvasni | Nem, és nem is lenne mit: a relay tartalmat nem tárol |
+| Az `agent_token`jeidet megszerezni | Nem. Session-enként frissen készül, és csak az adott hívás válaszában szerepel |
+| A Cloudflare fiókodhoz hozzáférni | Nem. Ez egy Worker környezeti érték, nem API-token |
+
+**Csere:** `npx wrangler secret put VOICE_RELAY_SECRET`, majd az új érték minden
+gép `agent/voice.config.json`-jába. A már futó session-öket ez nem szakítja meg,
+mert azok a saját `agent_token`-jükkel dolgoznak; a friss titok csak új session
+nyitásához kell. Adathalász-gyanú esetén a csere mellé a futó session-öket is
+zárd le `drop`-pal.
+
+A titok fizikailag két helyen van: a Cloudflare secret-tárolójában, és nyílt
+szövegben a `agent/voice.config.json`-ban minden gépen, ahol használod. Utóbbi
+minden, a te felhasználódként futó folyamat számára olvasható — ugyanaz a
+bizalmi szint, mint a shell-hozzáférés.
 
 ## Költség
 
