@@ -24,6 +24,9 @@
   // Chrome finalises a phrase well after the audio stops, so the microphone stays
   // deaf a little longer than the synthesiser is busy.
   const ECHO_TAIL_MS = 3000;
+  // A turn that ends without a spoken answer is invisible to the relay, and the
+  // phone would wait for it forever. After this the page gives up waiting.
+  const WAITING_TIMEOUT_MS = 180_000;
   const SPEECH_CHUNK_CHARS = 180;
 
   const el = (id) => document.getElementById(id);
@@ -131,6 +134,7 @@
     autoSendTick: null,
     autoSendAt: 0,
     waiting: false, // an utterance went out and nothing has been read back yet
+    waitingTimer: null,
     speaking: false,
     suppressRecognition: false,
     suppressTimer: null,
@@ -482,8 +486,22 @@
     const cid = String(++app.cid);
     app.pending.set(cid, { entry, text });
     app.socket.send(JSON.stringify({ type: "utterance", cid, text }));
+    startWaiting();
+  }
+
+  function startWaiting() {
+    clearTimeout(app.waitingTimer);
     app.waiting = true;
+    app.waitingTimer = setTimeout(() => stopWaiting(), WAITING_TIMEOUT_MS);
     render();
+  }
+
+  function stopWaiting() {
+    clearTimeout(app.waitingTimer);
+    app.waitingTimer = null;
+    app.waiting = false;
+    render();
+    if (dom.input.value.trim()) armAutoSend();
   }
 
   // ------------------------------------------------------------- connection
@@ -560,12 +578,12 @@
         app.pending.delete(message.cid);
         if (pending && !message.delivered) {
           markFailed(pending.entry, pending.text);
-          app.waiting = false;
+          stopWaiting();
         }
         break;
       }
       case "say":
-        app.waiting = false;
+        stopWaiting();
         addMessage("theirs", message.text);
         speak(message.text);
         break;
