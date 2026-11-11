@@ -11,7 +11,7 @@
 // becomes one conversation event in the Claude Code session. Nothing else may
 // ever appear there, so all diagnostics go to stderr.
 
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -72,8 +72,14 @@ function sessionFile(id) {
   return join(ensureStore(), `${id}.json`);
 }
 
+// The record holds the only copy of the agent_token, so it is written to a
+// temporary file and renamed into place: a crash mid-write cannot leave half a
+// record behind.
 function saveSession(session) {
-  writeFileSync(sessionFile(session.session_id), JSON.stringify(session, null, 2), "utf8");
+  const file = sessionFile(session.session_id);
+  const temp = `${file}.${process.pid}.tmp`;
+  writeFileSync(temp, JSON.stringify(session, null, 2), "utf8");
+  renameSync(temp, file);
 }
 
 function listSessions() {
@@ -105,6 +111,11 @@ function resolveSession(explicitId) {
   return sessions[0];
 }
 
+// Only `drop` may call this. The record is the only copy of the agent_token;
+// once it is gone the session cannot be reached again and the phone needs a
+// new pairing link. A close code or a 404 is not proof that the session is
+// over (4002 also means "a newer listener took over", and the Worker answers
+// 404 for any Durable Object failure), so neither deletes it.
 function forgetSession(id) {
   try {
     rmSync(sessionFile(id));
@@ -243,12 +254,19 @@ function cmdListen(args) {
     socket.addEventListener("close", (event) => {
       clearInterval(keepalive);
       if (stopping) return;
-      // Application close codes mean the session is over. Retrying would be a
-      // polling loop against a relay that will keep saying no.
-      if (event.code >= 4000 && event.code <= 4003) {
-        process.stderr.write(`session closed by the relay (${event.code})\n`);
-        forgetSession(session.session_id);
+      // 4002: a newer listener connected to the same session and the relay
+      // handed the stream to it. That is the normal way to restart the
+      // listener, so this one steps aside quietly. The record stays.
+      if (event.code === 4002) {
+        process.stderr.write("superseded by a newer listener (4002), exiting\n");
         process.exit(EXIT_OK);
+      }
+      // The other application close codes mean the relay will keep saying no,
+      // so retrying would be a polling loop. Exit, but keep the record: only
+      // `drop` deletes it.
+      if (event.code >= 4000 && event.code <= 4003) {
+        process.stderr.write(`session closed by the relay (${event.code}); local record kept\n`);
+        process.exit(EXIT_GONE);
       }
       process.stderr.write(`disconnected (${event.code})\n`);
       retry();
@@ -290,8 +308,8 @@ async function cmdSay(args) {
     body: Buffer.from(text, "utf8"),
   });
   if (response.status === 404) {
-    forgetSession(session.session_id);
-    fail("The session is closed.", EXIT_GONE);
+    // Not deleted: the Worker answers 404 for any Durable Object failure too.
+    fail("The relay does not know this session (HTTP 404). Local record kept.", EXIT_GONE);
   }
   if (!response.ok) fail(`Relay error: HTTP ${response.status}`, EXIT_GONE);
 

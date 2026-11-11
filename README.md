@@ -130,6 +130,9 @@ beszélgetés-üzenet lesz:
 node "<repó>/agent/voice.mjs" listen --session <id> 2>>"<hibafájl>"
 ```
 
+Újraindításnál (pl. a Monitor 30 perces korlátja miatt) előbb az újat indítsd,
+aztán a régit állítsd le - lásd [A `listen` újraindítása](#a-listen-újraindítása).
+
 **Válasz felolvastatása.** Az egész mondanivalót egyben, egy hívásban:
 
 ```bash
@@ -193,10 +196,35 @@ következik:
 - Ezért a `listen` minden diagnosztikát a **stderr**-re ír, és a stdoutra soha
   semmi mást nem tesz.
 
-A `listen` magától újracsatlakozik, exponenciálisan növekvő várakozással. Ha a
-relay lezárt session-t jelez (4000–4003 záró kód), **kilép**, nem próbálkozik
-tovább — egy másodpercenként újrainduló héjciklus napi több tízezer felesleges
-kérés lenne.
+A `listen` magától újracsatlakozik, exponenciálisan növekvő várakozással. Az
+alkalmazás-specifikus záró kódoknál viszont **kilép**, nem próbálkozik tovább -
+egy másodpercenként újrainduló héjciklus napi több tízezer felesleges kérés lenne:
+
+- **4002 - egy újabb listener vette át a session-t.** Ez a normál újraindítás
+  jele, nem hiba: a régi `listen` kiírja a stderr-re, hogy
+  `superseded by a newer listener (4002)`, és 0-s kóddal kilép.
+- **4000 (lezárva), 4001 (lejárt), 4003 (elutasított token)** - a `listen`
+  kiírja a kódot a stderr-re, és nem nullás kóddal kilép.
+
+**A helyi session-rekordot (`<id>.json`, benne az `agent_token` egyetlen
+példányával) kizárólag a `drop` törli.** Sem a záró kód, sem a `say` 404-es
+válasza nem törli: a 4002 egy átvételt jelent, a 404-et pedig a Worker minden
+Durable Object-hibára is adja. Ha a rekord elveszne, a session elérhetetlen
+lenne, és új párosító QR-kód kellene.
+
+### A `listen` újraindítása
+
+A Claude Code Monitor toolja legfeljebb 30 percig fut, utána a `listen`-t újra
+kell indítani. A biztonságos sorrend: **előbb az új, aztán a régi**
+(make-before-break):
+
+1. Indítsd el az új `listen`-t egy új Monitorban, ugyanazzal a `--session`-nel.
+2. Amint csatlakozott, a relay 4002-vel lezárja a régi kapcsolatot; a régi
+   `listen` magától kilép, a rekord megmarad.
+3. Ha a régi Monitor ezután is fut még, állítsd le - ez már nem okoz kiesést.
+
+Így nincs olyan pillanat, amikor senki sem figyel, és a felhasználó közben
+mondott szavai nem vesznek el.
 
 ## Fenyegetés-leírás
 
